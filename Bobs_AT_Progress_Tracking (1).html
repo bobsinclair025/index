@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bob's AT Progress Tracker - Dashboard Build</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, sans-serif; display: flex; height: 100vh; background: #f8fafc; color: #1e293b; }
+        #map { flex-grow: 1; height: 100%; z-index: 1; }
+        .sidebar { width: 420px; background: white; padding: 25px; box-sizing: border-box; overflow-y: auto; border-right: 1px solid #e2e8f0; z-index: 10; }
+        
+        h2 { margin: 0; color: #1e293b; font-size: 1.5rem; }
+        .stats-box { background: #f0fdf4; padding: 15px; border-radius: 10px; margin: 20px 0; border: 1px solid #dcfce7; }
+        
+        /* Progress Bar Styling */
+        .progress-container { width: 100%; background-color: #e2e8f0; border-radius: 20px; height: 12px; margin: 10px 0; overflow: hidden; }
+        .progress-bar { height: 100%; background-color: #22c55e; width: 0%; transition: width 0.5s; }
+
+        /* Table Styling */
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.85rem; }
+        th { text-align: left; border-bottom: 2px solid #e2e8f0; padding: 8px; color: #64748b; }
+        td { padding: 8px; border-bottom: 1px solid #f1f5f9; }
+        .pct-cell { font-weight: bold; color: #16a34a; text-align: right; }
+
+        .hike-card { background: white; border: 1px solid #e2e8f0; border-left: 6px solid #22c55e; padding: 12px; margin-top: 10px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); font-size: 0.85rem; }
+        .legend { font-size: 12px; margin: 15px 0; padding: 8px; background: #f1f5f9; border-radius: 4px; }
+        .dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2>Bob's AT Progress Tracker</h2>
+    <div class="legend">
+        <span class="dot" style="background: #ef4444;"></span> Planned AT Path 
+        <span class="dot" style="background: #22c55e; margin-left: 10px;"></span> Completed Miles
+    </div>
+
+    <div class="stats-box">
+        <div style="display:flex; justify-content: space-between; align-items: baseline;">
+            <span id="totalMiles" style="font-weight:bold; color: #166534; font-size: 1.2em;">0.0 mi</span>
+            <span id="percentDone" style="font-size: 0.9em; color: #166534; font-weight: 600;">0.00% Overall</span>
+        </div>
+        <div class="progress-container"><div id="mainProgress" class="progress-bar"></div></div>
+    </div>
+
+    <h3 style="font-size: 1rem; margin: 25px 0 10px 0;">State Progress</h3>
+    <table id="stateTable">
+        <thead>
+            <tr><th>State</th><th>Miles</th><th>% Done</th></tr>
+        </thead>
+        <tbody id="stateBody">
+            </tbody>
+    </table>
+
+    <h3 style="font-size: 1rem; margin: 30px 0 10px 0;">Hike Log</h3>
+    <div id="historyList"></div>
+</div>
+
+<div id="map"></div>
+
+<script>
+    // Official AT State Mileages (Approx for tracking)
+    const stateTotals = {
+        "GA": 76.4, "NC": 95.7, "TN": 287.9, "VA": 550.3, 
+        "WV": 4.0, "MD": 40.9, "PA": 229.6, "NJ": 72.2, 
+        "NY": 88.4, "CT": 51.6, "MA": 91.2, "VT": 149.8, 
+        "NH": 160.9, "ME": 281.4
+    };
+
+    const allTrail = [
+        {m: 0, c: [34.626, -84.193]}, {m: 450, c: [36.103, -82.091]}, {m: 860, c: [37.915, -78.938]},
+        {m: 953.6, c: [38.740, -78.307]}, {m: 967.4, c: [38.823, -78.173]},
+        {m: 992.1, c: [38.922, -78.077]}, {m: 999.7, c: [38.955, -78.012]},
+        {m: 1006.5, c: [39.117, -77.857]}, {m: 1013.9, c: [39.195, -77.818]},
+        {m: 1020.1, c: [39.264, -77.776]}, {m: 1024.5, c: [39.311, -77.747]},
+        {m: 1026.7, c: [39.325, -77.730]}, {m: 1030.9, c: [39.333, -77.674]},
+        {m: 1036.7, c: [39.395, -77.639]}, {m: 1043.9, c: [39.484, -77.601]},
+        {m: 1046.1, c: [39.499, -77.611]}, {m: 1049.0, c: [39.535, -77.618]},
+        {m: 1052.2, c: [39.581, -77.585]}, {m: 1057.8, c: [39.658, -77.551]},
+        {m: 1067.4, c: [39.718, -77.511]}, {m: 1070.2, c: [39.735, -77.502]},
+        {m: 1085.5, c: [39.907, -77.477]}, {m: 1105.4, c: [40.031, -77.304]},
+        {m: 1114.0, c: [40.091, -77.218]}, {m: 1124.6, c: [40.151, -77.126]},
+        {m: 1131.4, c: [40.211, -77.062]}, {m: 1500.0, c: [41.605, -73.714]}, {m: 2197.9, c: [45.904, -68.921]}
+    ];
+
+    // --- PASTE YOUR DATA ROWS BELOW ---
+    const rawHikes = `
+VA	Elkwallow Gap	953.6	967.4	Compton Gap	5/3/26	S	
+VA	Liberty Hill Lane	992.1	999.7	VA605	11/1/25	S	
+VA	VA605	999.7	1006.5	Snicker's Gap - VA7	10/10/25	N	
+VA	Snickers Gap- VA7	1006.5	1013.9	Blackburn Trail Center	8/16/25	S	
+VA	Blackburn Trail Center	1013.9	1022.5	Keys Gap	7/18/25	N	
+WV	Keys Gap	1022.5	1024.5	Loudon Heights Trail to Split Rock	7/13/25	S	
+WV	Loudoun Heights	1024.5	1026.5	Goodloe E. Byron Memorial Foot Bridge	5/24/25	S	
+MD	Goodloe E. Byron Memorial Foot Bridge	1026.5	1030.9	Weverton Cliff	4/17/25	N	
+MD	Weverton Cliff	1030.9	1036.7	Gathland State Park	7/6/25	S	
+MD	Gathland State Park	1036.7	1043.9	Dalhgren Campsite	7/5/25	S	
+MD	Dahlgren Campsite	1043.9	1046.1	Washington Monument	6/13/25	N	
+MD	Washington Monument	1046.1	1049	I70 Footbridge	4/16/25	S	
+MD	I70 Footbridge	1049	1052.2	Black Rock Cliffs	4/14/25	N	
+MD	Black Rock Cliffs	1052.2	1057.8	Cowall Shelter	5/18/25	N	
+MD	Cowall Shelter	1057.8	1067.4	Pen Mar Park	6/20/25	S	
+PA	Pen Mar	1067.4	1070.2	PA-16	8/3/25	N	
+PA	PA-16	1070.2	1085.5	US-30, Caledonia State Park	7/27/25	S	
+PA	US-30, Caledonia State Park	1085.5	1105.4	Pine Grove Furnace St Pk- AT Museum	8/8/25	S	
+PA	Pine Grove Furnace St Pk- AT Museum	1105.4	1114	PA-34	10/25/25	S	
+PA	PA-34	1114	1124.6	Boiling Springs	10/18/25	S	
+PA	Boiling Springs	1124.6	1131.4	I-76 Overpass	4/18/26	S
+    `;
+
+    const map = L.map('map').setView([39.3, -77.8], 8);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Esri'
+    }).addTo(map);
+
+    L.polyline(allTrail.map(p => p.c), { color: '#ef4444', weight: 2, opacity: 0.6 }).addTo(map);
+
+    function processHikes() {
+        let overallTotal = 0;
+        let stats = {};
+        const listDiv = document.getElementById('historyList');
+        const stateBody = document.getElementById('stateBody');
+        listDiv.innerHTML = '';
+        stateBody.innerHTML = '';
+        let lastLayer = null;
+
+        const lines = rawHikes.trim().split('\n');
+        lines.forEach(line => {
+            const cols = line.split('\t');
+            if (cols.length < 4) return;
+
+            const state = cols[0].trim();
+            const s = parseFloat(cols[2]);
+            const n = parseFloat(cols[3]);
+            
+            if (!isNaN(s) && !isNaN(n)) {
+                const dist = Math.abs(n - s);
+                overallTotal += dist;
+                stats[state] = (stats[state] || 0) + dist;
+
+                const seg = allTrail.filter(a => a.m >= Math.min(s,n) && a.m <= Math.max(s,n)).sort((a,b) => a.m - b.m).map(a => a.c);
+                if (seg.length > 1) {
+                    lastLayer = L.polyline(seg, { color: '#22c55e', weight: 8, opacity: 0.9, lineCap: 'round' }).addTo(map);
+                }
+
+                listDiv.innerHTML += `
+                    <div class="hike-card">
+                        <strong>${state}: Mile ${s} — ${n}</strong><br>
+                        <span style="font-size:0.8em; color:#64748b;">📍 ${cols[1]} → ${cols[4]}</span>
+                    </div>`;
+            }
+        });
+
+        // Update Overall Progress
+        const totalTrailLength = 2197.9;
+        const overallPct = (overallTotal / totalTrailLength) * 100;
+        document.getElementById('totalMiles').innerText = overallTotal.toFixed(1) + " mi Total";
+        document.getElementById('percentDone').innerText = overallPct.toFixed(2) + "% Overall";
+        document.getElementById('mainProgress').style.width = overallPct + "%";
+
+        // Generate State Table Rows
+        Object.keys(stats).sort().forEach(state => {
+            const done = stats[state];
+            const goal = stateTotals[state] || 100; // Fallback if state unknown
+            const pct = (done / goal) * 100;
+            
+            stateBody.innerHTML += `
+                <tr>
+                    <td>${state}</td>
+                    <td>${done.toFixed(1)} / ${goal}</td>
+                    <td class="pct-cell">${pct.toFixed(1)}%</td>
+                </tr>
+            `;
+        });
+
+        if (lastLayer) map.fitBounds(lastLayer.getBounds(), { padding: [100, 100] });
+    }
+
+    processHikes();
+</script>
+</body>
+</html>
