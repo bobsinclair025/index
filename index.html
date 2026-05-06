@@ -80,8 +80,8 @@ VA	SNP	0.0	10.2	Elizabeth Furnace	5/10/26	N
             document.getElementById('totalMiles').innerText = total.toFixed(1);
         }
 
-        // Draw the full red "planned" trail first
-        L.polyline(allTrail.map(a => a.c), { color: '#FF0000', weight: 4, dashArray: '5, 10' }).addTo(map);
+        // Draw the full black "planned" trail first
+        L.polyline(allTrail.map(a => a.c), { color: '#000000', weight: 6, dashArray: '5, 10' }).addTo(map);
         
         processHikes();
     </script>
